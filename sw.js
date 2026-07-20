@@ -1,4 +1,4 @@
-const CACHE_NAME = 'setfree-tv-v2';
+const CACHE_NAME = 'setfree-tv-v3';
 const ASSETS_TO_CACHE = [
     './index.html',
     './app.js',
