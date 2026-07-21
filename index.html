@@ -181,7 +181,8 @@
             
             <!-- FILTRI LIBRERIA -->
             <div id="library-filters" style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; overflow-x: auto; padding-bottom: 0.5rem; scrollbar-width: none;">
-                <button class="btn btn-small btn-outline active" onclick="renderLibrary('watching')">In Corso</button>
+                <button class="btn btn-small btn-outline active" onclick="renderLibrary('all')">Tutte</button>
+                <button class="btn btn-small btn-outline" onclick="renderLibrary('watching')">In Corso</button>
                 <button class="btn btn-small btn-outline" onclick="renderLibrary('planned')">Da Vedere</button>
                 <button class="btn btn-small btn-outline" onclick="renderLibrary('paused')">In Pausa</button>
                 <button class="btn btn-small btn-outline" onclick="renderLibrary('completed')">Viste</button>
@@ -209,7 +210,7 @@
 
         <!-- VISTA: DETTAGLIO SERIE -->
         <section id="view-detail" class="view card">
-            <button class="btn btn-outline btn-small" onclick="switchTab('library')" style="margin-bottom: 1.5rem;">← Torna Indietro</button>
+            <button class="btn btn-outline btn-small" onclick="navigateBack()" style="margin-bottom: 1.5rem;">← Torna Indietro</button>
             <div id="detail-content"></div>
         </section>
     </main>
@@ -251,18 +252,18 @@
         </div>
     </div>
 
-    <!-- MODALE CONFERMA (Brutalista) -->
+    <!-- MODALE CONFERMA (Dinamica) -->
     <div id="modal-confirm" class="modal-overlay">
-        <div class="modal-card" style="text-align: center; border-color: var(--danger); border-width: 2px;">
-            <h3 style="margin-top: 0; margin-bottom: 1rem; text-transform: uppercase; font-weight: 900; color: var(--danger); letter-spacing: -0.5px;">Azione Irreversibile</h3>
+        <div class="modal-card" style="text-align: center; border-width: 2px; border-style: solid;">
+            <h3 style="margin-top: 0; margin-bottom: 1rem; text-transform: uppercase; font-weight: 900; letter-spacing: -0.5px;"></h3>
             <p id="modal-confirm-message" style="margin-bottom: 1.5rem; font-weight: 600; font-size: 0.95rem;"></p>
             <div style="display: flex; gap: 1rem; justify-content: center;">
                 <button id="btn-confirm-cancel" class="btn btn-outline" style="flex: 1; font-weight: 800;">Annulla</button>
-                <button id="btn-confirm-ok" class="btn btn-danger" style="flex: 1; font-weight: 800;">Elimina</button>
+                <button id="btn-confirm-ok" class="btn" style="flex: 1; font-weight: 800;"></button>
             </div>
         </div>
     </div>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="api-config.js"></script>
     <script src="app.js"></script>
@@ -273,6 +274,6 @@
         <strong style="color: white; font-weight: 900; letter-spacing: 1px;">CARICAMENTO...</strong>
         <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
     </div>
-    
+
 </body>
 </html>
