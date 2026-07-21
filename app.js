@@ -1031,44 +1031,59 @@ async function checkAutoCompletion(tvId) {
         if (!userSeries.progress) userSeries.progress = {};
 
         let expectedEpisodes = 0;
+        let hasFutureEpisodes = false; // NUOVO RADAR PER IL FUTURO
         const today = new Date().toISOString().split('T')[0];
 
-        // 1. Calcolo Infallibile del Target (Escludendo il futuro)
+        // 1. Calcolo Infallibile del Target
         for (const [seasonNum, seasonData] of Object.entries(tmdbData.detailed_seasons)) {
             if (seasonData.episodes) {
                 for (const ep of seasonData.episodes) {
                     const epKey = `S${String(seasonNum).padStart(2, '0')}E${String(ep.episode_number).padStart(2, '0')}`;
                     
-                    // L'episodio fa statistica SOLO se è già andato in onda 
-                    // OPPURE se non ha data ma tu lo hai spuntato forzatamente.
+                    // L'episodio fa statistica se è già andato in onda o se spuntato a mano
                     if ((ep.air_date && ep.air_date <= today) || userSeries.progress[epKey]) {
                         expectedEpisodes++;
+                    }
+
+                    // Se l'episodio ha una data nel futuro, accende il radar
+                    if (ep.air_date && ep.air_date > today) {
+                        hasFutureEpisodes = true;
                     }
                 }
             }
         }
 
-        // 2. La VERA conta contabile (nessuna fiducia nei contatori incrementali)
+        // 2. La VERA conta contabile
         const actualWatched = Object.keys(userSeries.progress).length;
 
-        // Auto-riparazione silenziosa: se il contatore numerico si è corrotto in passato, sistemalo.
+        // Auto-riparazione silenziosa
         if (userSeries.watched_count !== actualWatched) {
-            console.warn(`[SYS] Correzione database per ${tvId}: Contatore sballato riparato (${userSeries.watched_count} -> ${actualWatched})`);
+            console.warn(`[SYS] Correzione database per ${tvId}: Contatore riparato`);
             userSeries.watched_count = actualWatched;
         }
 
         let statusChanged = false;
 
-        // 3. Diramazione Operativa
+        // 3. Diramazione Operativa Aggiornata
         if (expectedEpisodes > 0 && actualWatched >= expectedEpisodes) {
-            // PROMOZIONE
-            if (userSeries.status !== 'completed') {
-                userSeries.status = 'completed';
-                console.log(`[SYS] Promozione: ${tmdbData.name} -> COMPLETATA (${actualWatched}/${expectedEpisodes})`);
-                statusChanged = true;
+            if (!hasFutureEpisodes) {
+                // PROMOZIONE VERA: Hai visto tutto e non ci sono episodi nel futuro
+                if (userSeries.status !== 'completed') {
+                    userSeries.status = 'completed';
+                    console.log(`[SYS] Promozione: ${tmdbData.name} -> COMPLETATA`);
+                    statusChanged = true;
+                }
+            } else {
+                // SEI IN PARI: Ma la serie sta ancora uscendo. 
+                // Se era in completata (per il vecchio bug o a mano), riportala in corso.
+                if (userSeries.status === 'completed') {
+                    userSeries.status = 'watching';
+                    console.log(`[SYS] Correzione: ${tmdbData.name} -> IN CORSO (Episodi futuri in arrivo)`);
+                    statusChanged = true;
+                }
             }
         } else if (userSeries.status === 'completed' && actualWatched < expectedEpisodes) {
-            // DECLASSAMENTO (Se aggiungono nuovi episodi o ne deselezioni uno)
+            // DECLASSAMENTO (Se aggiungono nuovi episodi passati o ne deselezioni uno)
             userSeries.status = 'watching';
             console.log(`[SYS] Declassamento: ${tmdbData.name} -> IN CORSO (Mancano episodi)`);
             statusChanged = true;
@@ -1083,6 +1098,7 @@ async function checkAutoCompletion(tvId) {
         return false;
     }
 }
+
 
 async function toggleFavorite(tvId) {
     try {
