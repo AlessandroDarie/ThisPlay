@@ -1501,6 +1501,32 @@ async function silentCacheUpdate() {
     }
 }
 
+let deferredPrompt;
+
+// Intercetta l'evento di sistema prima che Chrome faccia di testa sua
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    
+    // Esempio: se hai un bottone <button id="btn-installa"> nascosto, mostralo qui
+    const btnInstalla = document.getElementById('btn-installa');
+    if (btnInstalla) {
+        btnInstalla.style.display = 'block';
+        
+        btnInstalla.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt(); // Mostra il vero popup di sistema
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('App installata');
+                }
+                deferredPrompt = null;
+                btnInstalla.style.display = 'none'; // Nascondi il bottone
+            }
+        });
+    }
+});
+
 // ==========================================
 // EVENTI DI SISTEMA E INIZIALIZZAZIONE
 // ==========================================
