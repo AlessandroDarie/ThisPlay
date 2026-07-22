@@ -1190,11 +1190,20 @@ function customAlert(message) {
 
 async function exportData() {
     try {
-        const keys = await UserLibrary.keys();
-        const exportObj = {};
+        const userKeys = await UserLibrary.keys();
+        const tmdbKeys = await TmdbCache.keys();
         
-        for (const key of keys) {
-            exportObj[key] = await UserLibrary.getItem(key);
+        // Impacchettiamo sia i progressi vitali che l'intera cache offline
+        const exportObj = {
+            user_library: {},
+            tmdb_cache: {}
+        };
+        
+        for (const key of userKeys) {
+            exportObj.user_library[key] = await UserLibrary.getItem(key);
+        }
+        for (const key of tmdbKeys) {
+            exportObj.tmdb_cache[key] = await TmdbCache.getItem(key);
         }
         
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
@@ -1206,9 +1215,9 @@ async function exportData() {
         downloadAnchorNode.click();
         downloadAnchorNode.remove();
         
-        await customAlert("Backup esportato con successo. Conserva questo file al sicuro.");
+        await customAlert("Backup completo (Progressi + Dati TMDB) esportato con successo. Conserva questo file al sicuro.");
     } catch (error) {
-        console.error("Errore durante l'esportazione:", error);
+        console.error("[CRITICO] Errore durante l'esportazione:", error);
         await customAlert("Fallimento critico durante la creazione del backup.");
     }
 }
@@ -1221,19 +1230,55 @@ async function importData(event) {
     reader.onload = async (e) => {
         try {
             const importedData = JSON.parse(e.target.result);
-            if (typeof importedData !== 'object' || importedData === null) throw new Error("Formato non valido");
+            if (typeof importedData !== 'object' || importedData === null) throw new Error("Formato JSON non valido");
 
-            for (const [key, value] of Object.entries(importedData)) {
-                await UserLibrary.setItem(key, value);
+            // Riconoscimento della topologia del file: Vecchio formato (solo library) vs Nuovo formato (library + cache)
+            const isNewFormat = importedData.user_library && importedData.tmdb_cache;
+            const isOldFormat = !isNewFormat && Object.keys(importedData).length > 0 && importedData[Object.keys(importedData)[0]].status !== undefined;
+
+            if (!isNewFormat && !isOldFormat) throw new Error("Struttura dati non riconosciuta");
+
+            // Il gatekeeper: mai sovrascrivere senza il consenso esplicito dell'utente
+            const confermato = await customConfirm(
+                "Vuoi sovrascrivere il database attuale con questo backup? I dati presenti sul dispositivo verranno annientati.", 
+                { title: "Ripristino Irreversibile", confirmText: "Sovrascrivi", isDestructive: true }
+            );
+
+            if (!confermato) {
+                event.target.value = ''; 
+                return;
             }
 
-            await customAlert("Backup ripristinato con successo! Ricarica la pagina o il cruscotto.");
+            // Tabula rasa: distruggiamo il db attuale per evitare conflitti fantasma
+            await UserLibrary.clear();
+
+            if (isNewFormat) {
+                // Formato completo
+                await TmdbCache.clear();
+                for (const [key, value] of Object.entries(importedData.user_library)) {
+                    await UserLibrary.setItem(key, value);
+                }
+                for (const [key, value] of Object.entries(importedData.tmdb_cache)) {
+                    await TmdbCache.setItem(key, value);
+                }
+            } else {
+                // Retrocompatibilità per salvataggi fatti con la vecchia versione del codice
+                for (const [key, value] of Object.entries(importedData)) {
+                    await UserLibrary.setItem(key, value);
+                }
+                console.warn("[SYS] Importato backup legacy. La TmdbCache dovrà essere ricostruita via rete.");
+            }
+
+            await customAlert("Backup ripristinato con successo! L'interfaccia si ricaricherà ora.");
             event.target.value = ''; 
-            renderLibrary(); 
+            
+            // Forza il ricaricamento totale della root per allineare le metriche
+            switchTab('home'); 
 
         } catch (error) {
-            console.error("Errore durante l'importazione:", error);
-            await customAlert("Il file selezionato non è un backup valido.");
+            console.error("[CRITICO] Errore durante l'importazione:", error);
+            await customAlert("Il file selezionato è corrotto o non è un backup valido di ThisPlay.");
+            event.target.value = ''; 
         }
     };
     
