@@ -13,5 +13,14 @@ const TMDB_CONFIG = {
 
     buildSearchUrl: function(query, type = 'tv') {
         return `${this.BASE_URL}/search/${type}?api_key=${this.API_KEY}&language=it-IT&query=${encodeURIComponent(query)}`;
+    },
+
+    buildPersonUrl: function(personId) {
+        return `${this.BASE_URL}/person/${personId}?api_key=${this.API_KEY}&language=it-IT&append_to_response=combined_credits`;
+    },
+
+    buildTrendingUrl: function(mediaType = 'tv') {
+        // mediaType può essere 'tv' o 'movie'
+        return `${this.BASE_URL}/trending/${mediaType}/week?api_key=${this.API_KEY}&language=it-IT`;
     }
 };

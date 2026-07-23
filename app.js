@@ -85,6 +85,8 @@ async function searchMedia() {
     if (!query) return;
     lastSearchQuery = query;
 
+    document.getElementById('discovery-section').style.display = 'none';
+    
     try {
         resultsContainer.innerHTML = '<span style="color: var(--text-muted);">Ricerca in corso...</span>';
         // Passa il type all'API config
@@ -101,34 +103,56 @@ async function searchMedia() {
         }
 
         data.results.slice(0, 8).forEach(item => {
-            // TMDB usa 'first_air_date' per le TV e 'release_date' per i Film
-            const rawDate = mediaType === 'tv' ? item.first_air_date : item.release_date;
-            const year = rawDate ? rawDate.substring(0, 4) : 'N/A';
-            const title = mediaType === 'tv' ? item.name : item.title;
-            const badgeColor = mediaType === 'tv' ? 'var(--text)' : 'var(--danger)';
-            const badgeText = mediaType === 'tv' ? 'TV' : 'FILM';
+            let title, detailLine, badgeColor, badgeText, actionBtn, imgPath;
+
+            if (mediaType === 'person') {
+                // Bivio Attori
+                title = item.name;
+                detailLine = item.known_for_department === 'Acting' ? 'Recitazione' : (item.known_for_department || 'Sconosciuto');
+                badgeColor = 'var(--text-muted)';
+                badgeText = 'PERSONA';
+                actionBtn = `<button class="btn btn-outline btn-small" onclick="openActorView(${item.id})">Apri</button>`;
+                imgPath = item.profile_path; // TMDB usa profile_path per le persone
+            } else {
+                // Bivio Media (Film/TV)
+                const rawDate = mediaType === 'tv' ? item.first_air_date : item.release_date;
+                detailLine = rawDate ? `Anno: ${rawDate.substring(0, 4)}` : 'Anno: N/A';
+                title = mediaType === 'tv' ? item.name : item.title;
+                badgeColor = mediaType === 'tv' ? 'var(--text)' : 'var(--danger)';
+                badgeText = mediaType === 'tv' ? 'TV' : 'FILM';
+                actionBtn = `<button class="btn btn-outline btn-small" onclick="previewMedia(${item.id}, '${mediaType}')">Apri</button>`;
+                imgPath = item.poster_path; // TMDB usa poster_path per i media
+            }
+
+            // Fallback intelligente se l'immagine manca nei server TMDB
+            const imgUrl = imgPath ? `${TMDB_CONFIG.IMAGE_BASE_URL}${imgPath}` : 'https://placehold.co/100x150/27272a/a1a1aa?text=N/D';
 
             const div = document.createElement('div');
             div.className = 'card';
             div.style.display = 'flex';
             div.style.justifyContent = 'space-between';
             div.style.alignItems = 'center';
-            div.style.padding = '1rem';
+            div.style.padding = '0.75rem 1rem'; 
             div.style.marginBottom = '0';
             
             div.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 0.2rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.6rem; font-weight: 900; background: ${badgeColor}; color: var(--card-bg); padding: 0.1rem 0.3rem; border-radius: 3px; letter-spacing: 0.5px;">${badgeText}</span>
-                        <strong style="line-height: 1.1;">${title}</strong>
+                <div style="display: flex; gap: 1rem; align-items: center; flex: 1; min-width: 0;">
+                    <img src="${imgUrl}" alt="Cover" style="width: 45px; height: 68px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0;">
+                    <div style="display: flex; flex-direction: column; gap: 0.2rem; overflow: hidden;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.6rem; font-weight: 900; background: ${badgeColor}; color: var(--card-bg); padding: 0.1rem 0.3rem; border-radius: 3px; letter-spacing: 0.5px; flex-shrink: 0;">${badgeText}</span>
+                            <strong style="line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</strong>
+                        </div>
+                        <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${detailLine}</span>
                     </div>
-                    <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700;">Anno: ${year}</span>
                 </div>
-                <!-- Notare come passiamo il mediaType alla funzione di preview -->
-                <button class="btn btn-outline btn-small" onclick="previewMedia(${item.id}, '${mediaType}')">Apri</button>
+                <div style="flex-shrink: 0; padding-left: 0.5rem;">
+                    ${actionBtn}
+                </div>
             `;
             resultsContainer.appendChild(div);
         });
+
     } catch (error) {
         console.error(error);
         resultsContainer.innerHTML = '<span style="color: var(--danger);">Errore di connessione o API.</span>';
@@ -814,7 +838,7 @@ async function openDetailView(mediaId) {
                         <strong style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 0.5rem;">Cast Principale</strong>
                         <div style="display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 0.5rem; scrollbar-width: none;">
                             ${topCast.map(actor => `
-                                <div style="flex-shrink: 0; width: 65px; text-align: center;">
+                                <div style="flex-shrink: 0; width: 65px; text-align: center; cursor: pointer;" onclick="openActorView(${actor.id})" title="Apri scheda di ${actor.name}">
                                     <img src="${actor.profile_path ? 'https://image.tmdb.org/t/p/w185' + actor.profile_path : 'https://placehold.co/65x95/27272a/a1a1aa?text=?'}" alt="${actor.name}" style="width: 65px; height: 65px; object-fit: cover; border-radius: 50%; border: 1.5px solid var(--border); margin-bottom: 0.3rem;">
                                     <div style="font-size: 0.65rem; font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text);">${actor.name}</div>
                                     <div style="font-size: 0.6rem; color: var(--text-muted); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.1rem;">${actor.character}</div>
@@ -830,7 +854,10 @@ async function openDetailView(mediaId) {
             ${bannerHTML}
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; gap: 1rem;">
                 <h2 style="margin: 0; text-transform: uppercase; font-weight: 900; letter-spacing: -0.5px; font-size: 1.8rem; line-height: 1.1;">${title}</h2>
-                ${!isPreview ? `<button class="btn btn-danger btn-small" style="flex-shrink: 0;" onclick="removeSeries(${mediaId})">Elimina</button>` : ''}
+                <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+                    ${!isPreview ? `<button class="btn btn-outline btn-small" onclick="forceUpdateMetadata(${mediaId})" title="Forza il download dei nuovi dati da TMDB">↻ Aggiorna</button>` : ''}
+                    ${!isPreview ? `<button class="btn btn-danger btn-small" onclick="removeSeries(${mediaId})">Elimina</button>` : ''}
+                </div>
             </div>
             ${trailerHTML}
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.5;">${tmdbData.overview || 'Nessuna sinossi disponibile.'}</p>
@@ -1437,7 +1464,7 @@ function customAlert(message) {
 }
 
 // ==========================================
-// MOTORE DI BACKUP E RIPRISTINO (Refactored)
+// MOTORE DI BACKUP E RIPRISTINO
 // ==========================================
 
 async function exportData() {
@@ -1457,7 +1484,6 @@ async function exportData() {
             exportObj.tmdb_cache[key] = await TmdbCache.getItem(key);
         }
         
-        // STRATEGIA 1: Smettere di usare Data URI. Usare i Blob per aggirare i limiti di memoria mobile.
         const jsonString = JSON.stringify(exportObj);
         const blob = new Blob([jsonString], { type: "application/json" });
         const url = URL.createObjectURL(blob);
@@ -1468,7 +1494,6 @@ async function exportData() {
         document.body.appendChild(downloadAnchorNode); 
         downloadAnchorNode.click();
         
-        // Pulizia della memoria
         setTimeout(() => {
             document.body.removeChild(downloadAnchorNode);
             URL.revokeObjectURL(url);
@@ -1513,19 +1538,23 @@ async function importData(event) {
                 
                 let counter = 0;
                 for (const [key, value] of Object.entries(importedData.user_library)) {
+                    // SANIFICAZIONE DATI: Vaccinazione retroattiva per i vecchi backup
+                    if (!value.media_type) value.media_type = 'tv';
                     await UserLibrary.setItem(key, value);
-                    // STRATEGIA 2: Fai respirare il thread. Impedisce a WebKit (iOS) di crashare per troppe transazioni IndexedDB.
                     if (++counter % 5 === 0) await sleep(50); 
                 }
                 
                 counter = 0;
                 for (const [key, value] of Object.entries(importedData.tmdb_cache)) {
+                    // SANIFICAZIONE DATI: Vaccinazione cache
+                    if (!value.media_type) value.media_type = 'tv';
                     await TmdbCache.setItem(key, value);
-                    // Pausa obbligatoria per oggetti enormi
                     if (++counter % 3 === 0) await sleep(100); 
                 }
             } else {
                 for (const [key, value] of Object.entries(importedData)) {
+                    // SANIFICAZIONE DATI: Vaccinazione formati legacy
+                    if (!value.media_type) value.media_type = 'tv';
                     await UserLibrary.setItem(key, value);
                 }
                 console.warn("[SYS] Importato backup legacy. La TmdbCache dovrà essere ricostruita via rete.");
@@ -1612,6 +1641,7 @@ function switchTab(viewId) {
     if (viewId === 'library') renderLibrary();
     if (viewId === 'home') renderHome();
     if (viewId === 'stats') renderStats();
+    if (viewId === 'search') loadDiscovery();
     
     window.scrollTo(0, 0);
 }
@@ -1811,6 +1841,246 @@ async function silentCacheUpdate() {
 
     } catch (criticalError) {
         console.error("[CRITICO] Fallimento nel motore di invalidazione cache:", criticalError);
+    }
+}
+
+// ==========================================
+// MOTORE SCHEDA ATTORE (PEOPLE) - REVISED
+// ==========================================
+
+async function openActorView(personId) {
+    const container = document.getElementById('actor-content');
+    const actorSection = document.getElementById('view-actor');
+    
+    // 1. Gestione Dinamica del Tasto Indietro basata sul Context
+    const previousContext = currentContext; // Salva da dove sta arrivando l'utente ('search' o 'detail')
+    
+    let backButtonHTML = '';
+    if (previousContext === 'search') {
+        backButtonHTML = `<button class="btn btn-outline btn-small" onclick="navigateBack()" style="margin-bottom: 1.5rem;">← Torna alla Ricerca</button>`;
+    } else {
+        backButtonHTML = `<button class="btn btn-outline btn-small" onclick="switchTab('detail')" style="margin-bottom: 1.5rem;">← Torna al Titolo</button>`;
+    }
+
+    container.innerHTML = '<div style="text-align: center; padding: 2rem;"><div style="width: 40px; height: 40px; border: 4px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div><span style="color: var(--text-muted); font-weight: 800; text-transform: uppercase;">Recupero fascicolo...</span></div>';
+    
+    switchTab('actor');
+
+    try {
+        const response = await fetch(TMDB_CONFIG.buildPersonUrl(personId));
+        if (!response.ok) throw new Error("Errore API TMDB");
+        const personData = await response.json();
+
+        const profileUrl = personData.profile_path ? `https://image.tmdb.org/t/p/w300${personData.profile_path}` : 'https://placehold.co/300x450/27272a/a1a1aa?text=No+Foto';
+        
+        const birth = personData.birthday ? personData.birthday.split('-').reverse().join('/') : 'Sconosciuta';
+        const death = personData.deathday ? ` - ${personData.deathday.split('-').reverse().join('/')}` : '';
+        const place = personData.place_of_birth || 'Sconosciuto';
+        const bio = personData.biography || 'Nessuna biografia disponibile in italiano per questo artista.';
+
+        // 2. FILTRAGGIO E ORDINAMENTO RIGIDO PER LA FILMOGRAFIA
+        let creditsHTML = '<span style="color: var(--text-muted); display: block; margin-top: 1rem;">Nessun credito rilevante trovato.</span>';
+        
+        if (personData.combined_credits && personData.combined_credits.cast) {
+            const validCredits = personData.combined_credits.cast
+                .filter(c => {
+                    // A. Solo Film e TV
+                    if (c.media_type !== 'movie' && c.media_type !== 'tv') return false;
+                    
+                    // B. PULIZIA COMPARSATE / TALK SHOW
+                    const character = (c.character || '').toLowerCase();
+                    if (character.includes('self') || character.includes('guest') || character.includes('himself') || character.includes('herself')) {
+                        return false;
+                    }
+                    return true;
+                })
+                // C. ORDINAMENTO PER VOTE_COUNT (Premia i grandi film/serie rispetto alla popolarità effimera)
+                .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0))
+                .slice(0, 15); // Prendi i 15 ruoli di recitazione più significativi
+
+            if (validCredits.length > 0) {
+                creditsHTML = `
+                    <div class="library-grid" style="margin-top: 1rem;">
+                        ${validCredits.map(item => {
+                            const title = item.media_type === 'movie' ? item.title : item.name;
+                            const poster = item.poster_path ? `${TMDB_CONFIG.IMAGE_BASE_URL}${item.poster_path}` : 'https://placehold.co/200x300/27272a/a1a1aa?text=N/D';
+                            const badgeColor = item.media_type === 'tv' ? 'var(--text)' : 'var(--danger)';
+                            const badgeText = item.media_type === 'tv' ? 'TV' : 'FILM';
+                            const badgeTextColor = item.media_type === 'movie' ? '#ffffff' : 'var(--bg)';
+                            
+                            return `
+                                <div class="series-card" style="position: relative;" onclick="previewMedia(${item.id}, '${item.media_type}')" title="${title}">
+                                    <div style="position: absolute; top: 5px; left: 5px; background: ${badgeColor}; color: ${badgeTextColor}; font-size: 0.5rem; font-weight: 900; padding: 0.15rem 0.35rem; border-radius: 3px; z-index: 10;">${badgeText}</div>
+                                    <img src="${poster}" alt="${title}">
+                                    <div class="series-card-content">
+                                        <span class="series-title" style="font-size: 0.7rem;">${title}</span>
+                                        <span class="series-status" style="text-transform: none; color: var(--text);">${item.character || 'Ruolo Sconosciuto'}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+        }
+
+        // Iniezione nel DOM inclusiva del bottone "Indietro" contestuale
+        container.innerHTML = `
+            ${backButtonHTML}
+            
+            <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; align-items: flex-start;">
+                <img src="${profileUrl}" alt="${personData.name}" style="width: 100px; height: 150px; object-fit: cover; border: 1.5px solid var(--text); flex-shrink: 0; background: var(--input-bg);">
+                <div>
+                    <h2 style="margin: 0 0 0.5rem 0; font-size: 1.6rem; text-transform: uppercase; line-height: 1.1;">${personData.name}</h2>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; margin-bottom: 0.3rem;">
+                        <span style="text-transform: uppercase;">Nato il:</span> <span style="color: var(--text);">${birth}${death}</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700;">
+                        <span style="text-transform: uppercase;">Luogo:</span> <span style="color: var(--text);">${place}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background: var(--input-bg); padding: 1rem; border: 1px solid var(--border); border-left: 4px solid var(--text); margin-bottom: 2rem;">
+                <h3 style="font-size: 0.8rem; margin: 0 0 0.5rem 0; color: var(--text-muted); text-transform: uppercase;">Biografia</h3>
+                <p style="font-size: 0.85rem; line-height: 1.6; margin: 0; color: var(--text); display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;" title="Leggi su TMDB per la versione completa">${bio}</p>
+            </div>
+
+            <h3 style="font-size: 1.1rem; text-transform: uppercase; border-bottom: 2px solid var(--text); padding-bottom: 0.5rem; margin-bottom: 1rem;">Opere Più Note</h3>
+            ${creditsHTML}
+        `;
+
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = `
+            ${backButtonHTML}
+            <div style="padding: 2rem; text-align: center; color: var(--danger); font-weight: 800;">[ERRORE DI RETE]<br>Impossibile recuperare i dati dell'attore. Verifica la connessione.</div>
+        `;
+    }
+}
+
+// ==========================================
+// OVERRIDE MANUALE CACHE TMDB
+// ==========================================
+
+async function forceUpdateMetadata(mediaId) {
+    const loader = document.getElementById('global-loader');
+    const loaderText = loader.querySelector('strong');
+    const originalText = loaderText.innerText;
+    
+    try {
+        loaderText.innerText = "AGGIORNAMENTO DATI...";
+        loader.classList.add('active');
+
+        // 1. Recupero contesto attuale
+        const oldTmdbData = await TmdbCache.getItem(String(mediaId));
+        const userItem = await UserLibrary.getItem(String(mediaId));
+        
+        const mediaType = (oldTmdbData && oldTmdbData.media_type) 
+            ? oldTmdbData.media_type 
+            : (userItem && userItem.media_type ? userItem.media_type : 'tv');
+
+        // 2. Chiamata API fresca con tutti i nuovi parametri (Cast, Trailer, Provider)
+        const url = mediaType === 'tv' ? TMDB_CONFIG.buildTvUrl(mediaId) : TMDB_CONFIG.buildMovieUrl(mediaId);
+        const response = await fetch(url);
+        
+        if (!response.ok) throw new Error("TMDB non raggiungibile. Controlla la rete.");
+        const freshData = await response.json();
+
+        // 3. Iniezione del DNA strutturale e preservazione delle stagioni già scaricate
+        freshData.media_type = mediaType;
+        freshData.last_updated = Date.now();
+        
+        if (mediaType === 'tv' && oldTmdbData && oldTmdbData.detailed_seasons) {
+            freshData.detailed_seasons = oldTmdbData.detailed_seasons;
+        }
+
+        // 4. Sovrascrittura spietata del vecchio JSON
+        await TmdbCache.setItem(String(mediaId), freshData);
+
+        console.log(`[SYS] Cache aggiornata forzatamente per ID: ${mediaId}`);
+
+        // 5. Ricarica chirurgica della vista
+        openDetailView(mediaId);
+
+        // EXTRA: Se è una serie TV, inneschiamo anche un controllo silenzioso sulle stagioni per sicurezza
+        if (mediaType === 'tv' && freshData.seasons) {
+            backgroundSeasonSync(mediaId, freshData.seasons);
+        }
+
+    } catch (error) {
+        console.error("[CRITICO] Fallimento aggiornamento forzato:", error);
+        await customAlert("Impossibile aggiornare i dati. Sei offline o l'API è bloccata.");
+    } finally {
+        loader.classList.remove('active');
+        loaderText.innerText = originalText; // Ripristino stato originale del loader
+    }
+}
+
+// ==========================================
+// MOTORE DI SCOPERTA (TRENDING)
+// ==========================================
+let isDiscoveryLoaded = false;
+
+async function loadDiscovery() {
+    if (isDiscoveryLoaded) return; // Carica i dati solo la prima volta per non sprecare traffico
+    
+    const container = document.getElementById('discovery-content');
+    container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted); font-weight: 800; font-size: 0.8rem; text-transform: uppercase;">Scansione radar globale in corso...</div>';
+    
+    try {
+        const [tvRes, movieRes] = await Promise.all([
+            fetch(TMDB_CONFIG.buildTrendingUrl('tv')),
+            fetch(TMDB_CONFIG.buildTrendingUrl('movie'))
+        ]);
+        
+        const tvData = await tvRes.json();
+        const movieData = await movieRes.json();
+        
+        const buildRow = (title, items, type) => {
+            const cards = items.slice(0, 10).map(item => {
+                const poster = item.poster_path ? `${TMDB_CONFIG.IMAGE_BASE_URL}${item.poster_path}` : 'https://placehold.co/150x225/27272a/a1a1aa?text=N/D';
+                const name = type === 'tv' ? item.name : item.title;
+                const badgeColor = type === 'tv' ? 'var(--text)' : 'var(--danger)';
+                const badgeText = type === 'tv' ? 'TV' : 'FILM';
+                const badgeTextColor = type === 'movie' ? '#ffffff' : 'var(--bg)';
+                
+                return `
+                    <div style="flex-shrink: 0; width: 100px; cursor: pointer; position: relative;" onclick="previewMedia(${item.id}, '${type}')" title="${name}">
+                        <div style="position: absolute; top: 4px; left: 4px; background: ${badgeColor}; color: ${badgeTextColor}; font-size: 0.5rem; font-weight: 900; padding: 0.1rem 0.25rem; border-radius: 2px; z-index: 10;">${badgeText}</div>
+                        <img src="${poster}" alt="${name}" style="width: 100px; height: 150px; object-fit: cover; border-radius: 4px; border: 1.5px solid var(--border); transition: border-color 0.2s;">
+                        <div style="font-size: 0.7rem; font-weight: 800; line-height: 1.1; margin-top: 0.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text);">${name}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            return `
+                <div style="margin-bottom: 2rem;">
+                    <h3 style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); border-bottom: 1.5px solid var(--border); padding-bottom: 0.3rem; margin-bottom: 1rem; letter-spacing: 0.5px;">${title}</h3>
+                    <div style="display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 0.5rem; scrollbar-width: none;">
+                        ${cards}
+                    </div>
+                </div>
+            `;
+        };
+        
+        container.innerHTML = buildRow('🔥 Serie TV del momento', tvData.results, 'tv') + buildRow('🎬 Film più popolari', movieData.results, 'movie');
+        isDiscoveryLoaded = true;
+        
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = '<span style="color: var(--danger); font-size: 0.8rem; font-weight: 800;">Errore di connessione. Radar offline.</span>';
+    }
+}
+
+function handleSearchInput(value) {
+    const discoverySection = document.getElementById('discovery-section');
+    const resultsContainer = document.getElementById('search-results');
+    
+    // Se l'utente svuota la barra di ricerca, nascondi i risultati e mostra di nuovo le tendenze
+    if (value.trim() === '') {
+        resultsContainer.innerHTML = '';
+        discoverySection.style.display = 'block';
     }
 }
 

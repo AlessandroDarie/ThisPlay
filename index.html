@@ -230,15 +230,27 @@
                 <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 800; cursor: pointer; text-transform: uppercase; font-size: 0.85rem; color: var(--text-muted);">
                     <input type="radio" name="search-type" value="movie" style="width: 16px; height: 16px; accent-color: var(--text);"> Film
                 </label>
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 800; cursor: pointer; text-transform: uppercase; font-size: 0.85rem; color: var(--text-muted);">
+                    <input type="radio" name="search-type" value="person" style="width: 16px; height: 16px; accent-color: var(--text);"> Attore
+                </label>
             </div>
 
+            <!-- MOTORE DI RICERCA -->
             <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                <input type="text" id="search-input" placeholder="Es: Scissione, Interstellar...">
+                <input type="text" id="search-input" placeholder="Es: Scissione, Interstellar..." oninput="handleSearchInput(this.value)">
                 <button class="btn" onclick="searchMedia()">Cerca</button>
             </div>
+            
+            <!-- CONTENITORE RISULTATI RICERCA MANUALE (Inizialmente vuoto) -->
             <div id="search-results" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+
+            <!-- SEZIONE SCOPERTA: TENDENZE GLOBALI (Visibile di default) -->
+            <div id="discovery-section" style="margin-top: 2rem;">
+                <div id="discovery-content"></div>
+            </div>
         </section>
 
+        
         <!-- VISTA: STATISTICHE -->
         <section id="view-stats" class="view card">
             <h2>Le Tue Statistiche</h2>
@@ -250,6 +262,12 @@
             <button class="btn btn-outline btn-small" onclick="navigateBack()" style="margin-bottom: 1.5rem;">← Torna Indietro</button>
             <div id="detail-content"></div>
         </section>
+
+        <!-- VISTA: SCHEDA ATTORE -->
+        <section id="view-actor" class="view card">
+            <div id="actor-content"></div>
+        </section>
+
     </main>
 
     <!-- FOOTER -->
