@@ -665,23 +665,18 @@ async function renderStats() {
     }
 }
 
-// ==========================================
-// DETTAGLIO SERIE ED EPISODI
-// ==========================================
-
 async function openDetailView(tvId) {
     window.currentOpenTvId = String(tvId);
     const detailContent = document.getElementById('detail-content');
     detailContent.innerHTML = '<span style="color: var(--text-muted);">Estrazione dati...</span>';
 
     try {
-        // userSeries potrebbe essere NULL se siamo in modalità anteprima
         const userSeries = await UserLibrary.getItem(String(tvId));
         const tmdbData = await TmdbCache.getItem(String(tvId));
         
         if (!tmdbData) throw new Error("Dati TMDB mancanti.");
 
-        const isPreview = !userSeries; // Variabile di stato cruciale
+        const isPreview = !userSeries;
 
         const bannerUrl = tmdbData.backdrop_path 
             ? `https://image.tmdb.org/t/p/w780${tmdbData.backdrop_path}` 
@@ -692,15 +687,78 @@ async function openDetailView(tvId) {
             bannerHTML = `<div style="width: 100%; height: 160px; border: 1.5px solid var(--text); background: url('${bannerUrl}') center/cover; margin-bottom: 1.5rem; display: block;"></div>`;
         }
 
-        // 1. HEADER (Il tasto elimina scompare in anteprima)
+        // ==========================================
+        // ESTRAZIONE DATI AGGIUNTIVI (PROVIDERS, TRAILER, CAST)
+        // ==========================================
+
+        let providersHTML = '';
+        if (tmdbData['watch/providers']?.results?.IT) {
+            const itData = tmdbData['watch/providers'].results.IT;
+            const providers = itData.flatrate || itData.free || [];
+            
+            if (providers.length > 0) {
+                const uniqueProviders = Array.from(new Map(providers.map(p => [p.provider_id, p])).values());
+                
+                providersHTML = `
+                    <div style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                        <strong style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Su:</strong>
+                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                            ${uniqueProviders.map(p => `
+                                <img src="https://image.tmdb.org/t/p/original${p.logo_path}" alt="${p.provider_name}" title="${p.provider_name}" style="width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--border);">
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        let trailerHTML = '';
+        if (tmdbData.videos?.results) {
+            const trailer = tmdbData.videos.results.find(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
+            if (trailer) {
+                trailerHTML = `
+                    <a href="https://www.youtube.com/watch?v=${trailer.key}" target="_blank" class="btn btn-outline btn-small" style="margin-bottom: 1.5rem; display: inline-flex; align-items: center; gap: 0.4rem; border-color: var(--danger); color: var(--danger); text-decoration: none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Trailer
+                    </a>
+                `;
+            }
+        }
+
+        let castHTML = '';
+        if (tmdbData.credits?.cast) {
+            const topCast = tmdbData.credits.cast.slice(0, 6);
+            if (topCast.length > 0) {
+                castHTML = `
+                    <div style="margin-bottom: 1.5rem;">
+                        <strong style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 0.5rem;">Cast Principale</strong>
+                        <div style="display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 0.5rem; scrollbar-width: none;">
+                            ${topCast.map(actor => `
+                                <div style="flex-shrink: 0; width: 65px; text-align: center;">
+                                    <img src="${actor.profile_path ? 'https://image.tmdb.org/t/p/w185' + actor.profile_path : 'https://placehold.co/65x95/27272a/a1a1aa?text=?'}" alt="${actor.name}" style="width: 65px; height: 65px; object-fit: cover; border-radius: 50%; border: 1.5px solid var(--border); margin-bottom: 0.3rem;">
+                                    <div style="font-size: 0.65rem; font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text);">${actor.name}</div>
+                                    <div style="font-size: 0.6rem; color: var(--text-muted); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.1rem;">${actor.character}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
         let html = `
             ${bannerHTML}
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; gap: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; gap: 1rem;">
                 <h2 style="margin: 0; text-transform: uppercase; font-weight: 900; letter-spacing: -0.5px; font-size: 1.8rem; line-height: 1.1;">${tmdbData.name}</h2>
                 ${!isPreview ? `<button class="btn btn-danger btn-small" style="flex-shrink: 0;" onclick="removeSeries(${tvId})">Elimina</button>` : ''}
             </div>
             
+            ${trailerHTML}
+            
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.5;">${tmdbData.overview || 'Nessuna sinossi disponibile.'}</p>
+            
+            ${providersHTML}
+            ${castHTML}
         `;
         
         if (isPreview) {
@@ -812,30 +870,56 @@ async function openDetailView(tvId) {
                             const isLast = i === seasonData.episodes.length - 1;
                             const borderBottom = isLast ? '' : 'border-bottom: 1px solid var(--border);';
 
+                            const calendarSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+                            // ==========================================
+                            // ESTRAZIONE DATI E GENERAZIONE BOTTONI SVG
+                            // ==========================================
                             let actionBtnHTML = '';
                             if (isFuture && !isWatched) {
-                                actionBtnHTML = `<button class="btn btn-outline btn-small" style="white-space: nowrap; flex-shrink: 0; opacity: 0.4; cursor: not-allowed; border-color: var(--border); color: var(--text-muted);" disabled title="In onda il ${dateStr}">Non Uscito</button>`;
+                                // Lucchetto per episodi non ancora usciti
+                                actionBtnHTML = `
+                                    <button class="btn btn-outline" style="width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; opacity: 0.4; cursor: not-allowed; border-color: var(--border); color: var(--text-muted); border-radius: 50%;" disabled title="In onda il ${dateStr}">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                    </button>`;
                             } else {
-                                const btnClass = isWatched ? 'btn btn-success btn-small' : 'btn btn-outline btn-small';
-                                const btnText = isWatched ? 'Visto' : 'Segna come visto';
-                                actionBtnHTML = `<button id="btn-${tvId}-${epKey}" class="${btnClass}" style="white-space: nowrap; flex-shrink: 0;" onclick="toggleEpisode(${tvId}, '${epKey}')">${btnText}</button>`;
+                                if (isWatched) {
+                                    // Spunta verde pesante
+                                    actionBtnHTML = `
+                                        <button id="btn-${tvId}-${epKey}" class="btn btn-success" style="width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" onclick="toggleEpisode(${tvId}, '${epKey}')" title="Rimuovi spunta">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                        </button>`;
+                                } else {
+                                    // Cerchio vuoto da spuntare
+                                    actionBtnHTML = `
+                                        <button id="btn-${tvId}-${epKey}" class="btn btn-outline" style="width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; border-color: var(--text-muted); color: var(--text-muted);" onclick="toggleEpisode(${tvId}, '${epKey}')" title="Segna come visto">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle></svg>
+                                        </button>`;
+                                }
                             }
 
-                            // ICONA SVG MINIMALE PER LA DATA AL POSTO DELL'EMOJI
-                            const calendarSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+                            const stillUrl = ep.still_path ? `https://image.tmdb.org/t/p/w300${ep.still_path}` : 'https://placehold.co/300x170/27272a/a1a1aa?text=TBA';
+                            const rowOpacity = isWatched ? '0.5' : '1';
+                            const imgFilter = isWatched ? 'grayscale(100%)' : 'none';
 
+                            // Rimosso il word-break letale e gestiti i margini di sicurezza
                             html += `
-                                <div ${rowIdAttr} style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 0; ${borderBottom}">
-                                    <div style="padding-right: 1rem;">
-                                        <span id="title-${tvId}-${epKey}" class="${titleClass}" style="display: block; font-size: 1rem; font-weight: 700; ${titleStyle}">
-                                            <span style="color: var(--text-muted); display: inline-block; width: 28px;">${ep.episode_number}.</span> 
+                                <div ${rowIdAttr} style="display: flex; gap: 0.75rem; align-items: center; padding: 1rem 0; ${borderBottom} opacity: ${rowOpacity}; transition: opacity 0.2s, background-color 0.2s; cursor: pointer; border-radius: 4px;" onclick="openEpisodeDetails(${tvId}, ${seasonNum}, ${ep.episode_number})">
+                                    
+                                    <img src="${stillUrl}" alt="Episodio ${ep.episode_number}" style="width: 100px; height: 56px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0; filter: ${imgFilter}; transition: filter 0.2s;">
+                                    
+                                    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0;">
+                                        <span id="title-${tvId}-${epKey}" class="${titleClass}" style="display: block; font-size: 0.95rem; font-weight: 800; ${titleStyle} line-height: 1.2; margin-bottom: 0.3rem; white-space: normal; padding-right: 0.5rem;">
+                                            <span style="color: var(--text-muted); margin-right: 0.1rem;">${ep.episode_number}.</span> 
                                             ${ep.name}
                                         </span>
-                                        <span style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center;">
+                                        <span style="display: block; font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center;">
                                             ${calendarSvg} ${dateStr}
                                         </span>
                                     </div>
-                                    ${actionBtnHTML}
+
+                                    <div style="flex-shrink: 0; padding-left: 0.5rem;" onclick="event.stopPropagation();">
+                                        ${actionBtnHTML}
+                                    </div>
                                 </div>
                             `;
                         });
@@ -852,6 +936,63 @@ async function openDetailView(tvId) {
     } catch (error) {
         console.error(error);
         detailContent.innerHTML = '<span style="color: var(--danger);">Errore critico nella lettura della cache. Controlla la console.</span>';
+    }
+}
+
+async function openEpisodeDetails(tvId, seasonNum, epNum) {
+    try {
+        const tmdbData = await TmdbCache.getItem(String(tvId));
+        if (!tmdbData || !tmdbData.detailed_seasons || !tmdbData.detailed_seasons[seasonNum]) return;
+        
+        const seasonData = tmdbData.detailed_seasons[seasonNum];
+        const ep = seasonData.episodes.find(e => e.episode_number === epNum);
+        if (!ep) return;
+
+        // Estrazione metriche extra
+        const stillUrl = ep.still_path ? `https://image.tmdb.org/t/p/w780${ep.still_path}` : 'https://placehold.co/780x440/27272a/a1a1aa?text=TBA';
+        const dateStr = ep.air_date ? ep.air_date.split('-').reverse().join('/') : "TBA";
+        const vote = ep.vote_average ? ep.vote_average.toFixed(1) : 'N/D';
+        const runtime = ep.runtime ? `${ep.runtime} min` : (tmdbData.episode_run_time && tmdbData.episode_run_time[0] ? `${tmdbData.episode_run_time[0]} min` : 'N/D');
+
+        const modal = document.getElementById('modal-episode');
+        const content = document.getElementById('modal-episode-content');
+
+        content.innerHTML = `
+            <img src="${stillUrl}" style="width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; border-bottom: 2px solid var(--text);">
+            <div style="padding: 1.5rem;">
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">
+                    Stagione ${seasonNum} • Episodio ${epNum}
+                </div>
+                <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.5rem; line-height: 1.1; color: var(--text);">${ep.name}</h3>
+                
+                <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; font-size: 0.8rem; font-weight: 700; color: var(--text-muted);">
+                    <div style="display: flex; align-items: center; gap: 0.3rem;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        ${dateStr}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.3rem;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #f59e0b;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                        ${vote}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.3rem;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        ${runtime}
+                    </div>
+                </div>
+                
+                <p style="color: var(--text); font-size: 0.95rem; line-height: 1.6; margin: 0;">${ep.overview || 'Nessuna sinossi disponibile per questo episodio nel database TMDB.'}</p>
+            </div>
+        `;
+        
+        modal.classList.add('active');
+    } catch (e) {
+        console.error("Fallimento apertura dettaglio episodio:", e);
+    }
+}
+
+function closeEpisodeModal(event, force = false) {
+    if (force || event.target.id === 'modal-episode') {
+        document.getElementById('modal-episode').classList.remove('active');
     }
 }
 

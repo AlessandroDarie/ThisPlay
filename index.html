@@ -281,6 +281,16 @@
         </div>
     </div>
 
+    <!-- MODALE DETTAGLIO EPISODIO -->
+    <div id="modal-episode" class="modal-overlay" onclick="closeEpisodeModal(event)">
+        <div class="modal-card" style="padding: 0; overflow: hidden; max-width: 500px; width: 95%;" onclick="event.stopPropagation()">
+            <div id="modal-episode-content"></div>
+            <div style="padding: 1rem; border-top: 1px solid var(--border); background: var(--input-bg);">
+                <button class="btn btn-outline" style="width: 100%; font-weight: 800;" onclick="closeEpisodeModal(null, true)">Chiudi</button>
+            </div>
+        </div>
+    </div>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="api-config.js"></script>
     <script src="migrator.js"></script>

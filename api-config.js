@@ -4,7 +4,8 @@ const TMDB_CONFIG = {
     IMAGE_BASE_URL: 'https://image.tmdb.org/t/p/w500',
     
     buildTvUrl: function(tvId) {
-        return `${this.BASE_URL}/tv/${tvId}?api_key=${this.API_KEY}&language=it-IT`;
+        // Iniezione di append_to_response per scaricare video, cast e piattaforme in una singola chiamata
+        return `${this.BASE_URL}/tv/${tvId}?api_key=${this.API_KEY}&language=it-IT&append_to_response=videos,credits,watch/providers`;
     },
 
     buildSearchUrl: function(query) {
