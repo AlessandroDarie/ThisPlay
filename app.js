@@ -774,19 +774,55 @@ async function renderStats() {
         }
         
         // Helper per la conversione del tempo
+        // Helper per la conversione base (per mantenere 3968h 32m nel cruscotto)
         const formatTime = (totalMins) => {
             return {
                 h: Math.floor(totalMins / 60),
-                m: totalMins % 60,
-                d: (totalMins / 1440).toFixed(1)
+                m: totalMins % 60
             };
+        };
+
+        // NUOVO HELPER: Algoritmo brutale per il tempo umano scalare
+        const formatHumanTime = (totalMins) => {
+            if (totalMins === 0) return "0 minuti";
+            
+            const minsInHour = 60;
+            const minsInDay = 24 * minsInHour;
+            const minsInMonth = 30 * minsInDay;
+            const minsInYear = 365 * minsInDay;
+
+            let y = Math.floor(totalMins / minsInYear);
+            let remainder = totalMins % minsInYear;
+            
+            let mo = Math.floor(remainder / minsInMonth);
+            remainder = remainder % minsInMonth;
+            
+            let d = Math.floor(remainder / minsInDay);
+            remainder = remainder % minsInDay;
+            
+            let h = Math.floor(remainder / minsInHour);
+            let m = remainder % minsInHour;
+
+            let parts = [];
+            if (y > 0) parts.push(`<strong style="color: var(--text);">${y}</strong> ann${y === 1 ? 'o' : 'i'}`);
+            if (mo > 0) parts.push(`<strong style="color: var(--text);">${mo}</strong> mes${mo === 1 ? 'e' : 'i'}`);
+            if (d > 0) parts.push(`<strong style="color: var(--text);">${d}</strong> giorn${d === 1 ? 'o' : 'i'}`);
+            if (h > 0) parts.push(`<strong style="color: var(--text);">${h}</strong> or${h === 1 ? 'a' : 'e'}`);
+            if (m > 0) parts.push(`<strong style="color: var(--text);">${m}</strong> minut${m === 1 ? 'o' : 'i'}`);
+
+            if (parts.length === 1) return parts[0];
+            if (parts.length === 2) return parts.join(' e ');
+            
+            const last = parts.pop();
+            return parts.join(', ') + ' e ' + last;
         };
 
         const tvTime = formatTime(tv.minutes);
         const movieTime = formatTime(movie.minutes);
         const totalTime = formatTime(tv.minutes + movie.minutes);
+        const humanReadableTotal = formatHumanTime(tv.minutes + movie.minutes);
 
-        // Helper per le percentuali (per i grafici CSS)
+        // Helper per le percentuali
         const getPct = (val, total) => total > 0 ? Math.round((val / total) * 100) : 0;
         
         // Calcolo metriche per barra Serie
@@ -819,8 +855,8 @@ async function renderStats() {
                         </div>
                     </div>
                 </div>
-                <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); background: var(--input-bg); padding: 0.75rem; border-left: 4px solid var(--text);">
-                    Equivale a <strong style="color: var(--text);">${totalTime.d} giorni</strong> interi passati davanti a uno schermo.
+                <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); background: var(--input-bg); padding: 0.75rem; border-left: 4px solid var(--text); line-height: 1.5;">
+                    Equivale a ${humanReadableTotal} spesi ininterrottamente davanti a uno schermo.
                 </div>
             </div>
 
