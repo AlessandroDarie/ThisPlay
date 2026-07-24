@@ -1905,18 +1905,22 @@ function customAlert(message) {
 }
 
 // ==========================================
-// MOTORE DI BACKUP E RIPRISTINO
+// MOTORE DI BACKUP E RIPRISTINO (ZIP)
 // ==========================================
 
 async function exportData() {
+    const loader = document.getElementById('global-loader');
+    const loaderText = loader.querySelector('strong');
+    const originalText = loaderText.innerText;
+
     try {
+        loaderText.innerText = "COMPRESSIONE IN CORSO...\nATTENDI";
+        loader.classList.add('active');
+
         const userKeys = await UserLibrary.keys();
         const tmdbKeys = await TmdbCache.keys();
         
-        const exportObj = {
-            user_library: {},
-            tmdb_cache: {}
-        };
+        const exportObj = { user_library: {}, tmdb_cache: {} };
         
         for (const key of userKeys) {
             exportObj.user_library[key] = await UserLibrary.getItem(key);
@@ -1926,12 +1930,20 @@ async function exportData() {
         }
         
         const jsonString = JSON.stringify(exportObj);
-        const blob = new Blob([jsonString], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
         
+        // Creazione dell'archivio ZIP con compressione DEFLATE
+        const zip = new JSZip();
+        zip.file("thisplay_backup.json", jsonString);
+        const blob = await zip.generateAsync({ 
+            type: "blob", 
+            compression: "DEFLATE", 
+            compressionOptions: { level: 6 } 
+        });
+        
+        const url = URL.createObjectURL(blob);
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.href = url;
-        downloadAnchorNode.download = `thisplay_backup_${new Date().toISOString().split('T')[0]}.json`;
+        downloadAnchorNode.download = `thisplay_backup_${new Date().toISOString().split('T')[0]}.zip`;
         document.body.appendChild(downloadAnchorNode); 
         downloadAnchorNode.click();
         
@@ -1939,11 +1951,18 @@ async function exportData() {
             document.body.removeChild(downloadAnchorNode);
             URL.revokeObjectURL(url);
         }, 150);
+
+        // Resetta il timer del promemoria
+        localStorage.setItem('thisplay_last_backup_time', Date.now());
         
-        await customAlert("Backup completo (Progressi + Dati TMDB) esportato con successo. Conserva questo file al sicuro.");
+        loader.classList.remove('active');
+        loaderText.innerText = originalText;
+        await customAlert("Backup ZIP esportato con successo. Dati e locandine sono al sicuro.");
     } catch (error) {
-        console.error("[CRITICO] Errore durante l'esportazione:", error);
-        await customAlert("Fallimento critico durante la creazione del backup.");
+        console.error("[CRITICO] Errore esportazione:", error);
+        loader.classList.remove('active');
+        loaderText.innerText = originalText;
+        await customAlert("Fallimento critico durante la compressione del backup.");
     }
 }
 
@@ -1951,70 +1970,186 @@ async function importData(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        try {
-            const importedData = JSON.parse(e.target.result);
-            if (typeof importedData !== 'object' || importedData === null) throw new Error("Formato JSON non valido");
+    const loader = document.getElementById('global-loader');
+    const loaderText = loader.querySelector('strong');
+    const originalText = loaderText.innerText;
 
-            const isNewFormat = importedData.user_library && importedData.tmdb_cache;
-            const isOldFormat = !isNewFormat && Object.keys(importedData).length > 0 && importedData[Object.keys(importedData)[0]].status !== undefined;
+    try {
+        const confermato = await customConfirm(
+            "Vuoi ripristinare questo backup? Il database attuale verrà raso al suolo e sovrascritto.", 
+            { title: "Ripristino Dati", confirmText: "Sovrascrivi", isDestructive: true }
+        );
 
-            if (!isNewFormat && !isOldFormat) throw new Error("Struttura dati non riconosciuta");
-
-            const confermato = await customConfirm(
-                "Vuoi sovrascrivere il database attuale con questo backup? I dati presenti sul dispositivo verranno annientati.", 
-                { title: "Ripristino Irreversibile", confirmText: "Sovrascrivi", isDestructive: true }
-            );
-
-            if (!confermato) {
-                event.target.value = ''; 
-                return;
-            }
-
-            await UserLibrary.clear();
-
-            if (isNewFormat) {
-                await TmdbCache.clear();
-                
-                let counter = 0;
-                for (const [key, value] of Object.entries(importedData.user_library)) {
-                    // SANIFICAZIONE DATI: Vaccinazione retroattiva per i vecchi backup
-                    if (!value.media_type) value.media_type = 'tv';
-                    await UserLibrary.setItem(key, value);
-                    if (++counter % 5 === 0) await sleep(50); 
-                }
-                
-                counter = 0;
-                for (const [key, value] of Object.entries(importedData.tmdb_cache)) {
-                    // SANIFICAZIONE DATI: Vaccinazione cache
-                    if (!value.media_type) value.media_type = 'tv';
-                    await TmdbCache.setItem(key, value);
-                    if (++counter % 3 === 0) await sleep(100); 
-                }
-            } else {
-                for (const [key, value] of Object.entries(importedData)) {
-                    // SANIFICAZIONE DATI: Vaccinazione formati legacy
-                    if (!value.media_type) value.media_type = 'tv';
-                    await UserLibrary.setItem(key, value);
-                }
-                console.warn("[SYS] Importato backup legacy. La TmdbCache dovrà essere ricostruita via rete.");
-            }
-
-            await customAlert("Backup ripristinato con successo! L'interfaccia si ricaricherà ora.");
+        if (!confermato) {
             event.target.value = ''; 
-            
-            switchTab('home'); 
-
-        } catch (error) {
-            console.error("[CRITICO] Errore durante l'importazione:", error);
-            await customAlert("Il file selezionato è corrotto o non è un backup valido di ThisPlay.");
-            event.target.value = ''; 
+            return;
         }
-    };
-    
-    reader.readAsText(file);
+
+        loaderText.innerText = "ESTRAZIONE E RIPRISTINO...\nNON CHIUDERE L'APP";
+        loader.classList.add('active');
+
+        let importedData = null;
+
+        // Bivio: Supporto per file .zip e vecchi file .json
+        if (file.name.endsWith('.zip')) {
+            const zip = new JSZip();
+            const contents = await zip.loadAsync(file);
+            const jsonFile = contents.file("thisplay_backup.json") || Object.values(contents.files).find(f => f.name.endsWith('.json'));
+            if (!jsonFile) throw new Error("Nessun JSON valido nello ZIP.");
+            const jsonString = await jsonFile.async("string");
+            importedData = JSON.parse(jsonString);
+        } else {
+            const jsonString = await file.text();
+            importedData = JSON.parse(jsonString);
+        }
+
+        const libraryData = importedData.user_library || importedData.UserLibrary || importedData;
+        
+        // CORREZIONE: Accettiamo file vuoti. Verifichiamo solo che sia un oggetto valido.
+        if (!libraryData || typeof libraryData !== 'object') {
+            throw new Error("Struttura dati non valida.");
+        }
+
+        await UserLibrary.clear();
+        let userCount = 0;
+        for (const [key, value] of Object.entries(libraryData)) {
+            if (key === 'tmdb_cache') continue; 
+            if (!value.media_type) value.media_type = 'tv'; // Vaccino vecchi dati
+            await UserLibrary.setItem(key, value);
+            userCount++;
+        }
+
+        let cacheCount = 0;
+        if (importedData.tmdb_cache) {
+            await TmdbCache.clear();
+            for (const [key, value] of Object.entries(importedData.tmdb_cache)) {
+                if (!value.media_type) value.media_type = 'tv';
+                await TmdbCache.setItem(key, value);
+                cacheCount++;
+            }
+        }
+
+        loader.classList.remove('active');
+        loaderText.innerText = originalText;
+        
+        await customAlert(`Ripristino completato!\nOpere ripristinate: ${userCount}\nCache ripristinate: ${cacheCount}`);
+        event.target.value = ''; 
+        
+        // Ricaricamento sicuro: la cache è già nel dispositivo
+        location.reload(); 
+
+    } catch (error) {
+        console.error("[CRITICO] Errore importazione:", error);
+        loader.classList.remove('active');
+        loaderText.innerText = originalText;
+        await customAlert("File illeggibile o corrotto. Impossibile completare il ripristino.");
+        event.target.value = ''; 
+    }
 }
+
+// ==========================================
+// MOTORE DI PROMEMORIA BACKUP
+// ==========================================
+
+function initBackupReminder() {
+    const configStr = localStorage.getItem('thisplay_backup_reminder');
+    if (!configStr) return; 
+
+    const reminderConfig = JSON.parse(configStr);
+    if (!reminderConfig.enabled) return;
+
+    // Se non esiste un salvataggio precedente, assume 0 per innescarlo al primo avvio utile
+    const lastBackup = parseInt(localStorage.getItem('thisplay_last_backup_time') || '0', 10);
+    const now = Date.now();
+
+    let intervalMs = 7 * 24 * 60 * 60 * 1000;
+    const val = parseInt(reminderConfig.value, 10) || 7;
+
+    switch (reminderConfig.unit) {
+        case 'seconds': intervalMs = val * 1000; break;
+        case 'minutes': intervalMs = val * 60 * 1000; break;
+        case 'hours': intervalMs = val * 60 * 60 * 1000; break;
+        case 'days': intervalMs = val * 24 * 60 * 60 * 1000; break;
+        case 'weeks': intervalMs = val * 7 * 24 * 60 * 60 * 1000; break;
+        case 'months': intervalMs = val * 30 * 24 * 60 * 60 * 1000; break;
+    }
+
+    // Il controllo avviene esclusivamente all'avvio/ricaricamento
+    if (now - lastBackup > intervalMs) {
+        // Ritardo di 1 secondo per permettere al DOM di caricarsi completamente senza accavallamenti
+        setTimeout(() => {
+            triggerBackupReminderModal();
+        }, 1000);
+    }
+}
+
+async function triggerBackupReminderModal() {
+    const confirmBackup = await customConfirm(
+        "È passato del tempo dal tuo ultimo backup. Vuoi esportare una copia dei tuoi progressi ora?",
+        { title: "Promemoria Backup", confirmText: "Esporta ZIP", isDestructive: false }
+    );
+
+    if (confirmBackup) {
+        await exportData();
+    } else {
+        // Se rifiuti, il timer riparte da zero. Questo è il costo opportunità di ignorare l'avviso.
+        localStorage.setItem('thisplay_last_backup_time', Date.now());
+    }
+}
+
+function renderBackupReminderSettingsUI() {
+    const container = document.getElementById('backup-reminder-settings-container');
+    if (!container) return;
+
+    const config = JSON.parse(localStorage.getItem('thisplay_backup_reminder')) || { enabled: false, value: 7, unit: 'days' };
+
+    container.innerHTML = `
+        <div style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <strong style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted);">Reminder Popup Backup</strong>
+                <button class="btn btn-outline btn-small" onclick="toggleReminderEnabled()" style="min-width: 60px; font-weight: 900;">${config.enabled ? 'ON' : 'OFF'}</button>
+            </div>
+            <div style="display: ${config.enabled ? 'flex' : 'none'}; gap: 0.5rem; align-items: center;">
+                <input type="number" id="reminder-value" value="${config.value}" min="1" style="width: 80px; padding: 0.4rem; text-align: center;" onchange="saveReminderConfig()">
+                <select id="reminder-unit" style="flex: 1; padding: 0.4rem; background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-weight: 700; outline: none;" onchange="saveReminderConfig()">
+                    <option value="seconds" ${config.unit === 'seconds' ? 'selected' : ''}>Secondi</option>
+                    <option value="minutes" ${config.unit === 'minutes' ? 'selected' : ''}>Minuti</option>
+                    <option value="hours" ${config.unit === 'hours' ? 'selected' : ''}>Ore</option>
+                    <option value="days" ${config.unit === 'days' ? 'selected' : ''}>Giorni</option>
+                    <option value="weeks" ${config.unit === 'weeks' ? 'selected' : ''}>Settimane</option>
+                    <option value="months" ${config.unit === 'months' ? 'selected' : ''}>Mesi</option>
+                </select>
+            </div>
+        </div>
+    `;
+}
+
+function toggleReminderEnabled() {
+    const config = JSON.parse(localStorage.getItem('thisplay_backup_reminder')) || { enabled: false, value: 7, unit: 'days' };
+    config.enabled = !config.enabled;
+    
+    // Il contatore parte da zero esattamente nel momento in cui attivi la funzione
+    if (config.enabled) {
+        localStorage.setItem('thisplay_last_backup_time', Date.now());
+    }
+    
+    localStorage.setItem('thisplay_backup_reminder', JSON.stringify(config));
+    renderBackupReminderSettingsUI();
+}
+
+function saveReminderConfig() {
+    const val = document.getElementById('reminder-value').value;
+    const unit = document.getElementById('reminder-unit').value;
+    const config = { enabled: true, value: parseInt(val, 10) || 1, unit: unit };
+    localStorage.setItem('thisplay_backup_reminder', JSON.stringify(config));
+    
+    // Qualsiasi alterazione ai valori resetta il timer. Se cambi idea sul tempo, riparti dall'inizio.
+    localStorage.setItem('thisplay_last_backup_time', Date.now());
+}
+
+// ==========================================
+// PONTE DI MIGRAZIONE TV TIME
+// ==========================================
 
 // ==========================================
 // PONTE DI MIGRAZIONE TV TIME
@@ -2105,6 +2240,7 @@ function switchTab(viewId) {
 
 function openSettings() {
     updateSettingsUI();
+    renderBackupReminderSettingsUI();
     document.getElementById('modal-settings').classList.add('active');
 }
 
@@ -2718,3 +2854,4 @@ if ('serviceWorker' in navigator) {
 
 // Init
 switchTab('home');
+initBackupReminder();
